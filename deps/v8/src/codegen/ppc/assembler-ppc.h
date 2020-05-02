@@ -230,10 +230,6 @@ class Assembler : public AssemblerBase {
     return link(L) - pc_offset();
   }
 
-  // Puts a labels target address at the given position.
-  // The high 8 bits are set to zero.
-  void label_at_put(Label* L, int at_offset);
-
   V8_INLINE static bool IsConstantPoolLoadStart(
       Address pc, ConstantPoolEntry::Access* access = nullptr);
   V8_INLINE static bool IsConstantPoolLoadEnd(
@@ -437,6 +433,20 @@ class Assembler : public AssemblerBase {
 
   PPC_XX3_OPCODE_LIST(DECLARE_PPC_XX3_INSTRUCTIONS)
 #undef DECLARE_PPC_XX3_INSTRUCTIONS
+
+#define DECLARE_PPC_VX_INSTRUCTIONS_A_FORM(name, instr_name, instr_value) \
+  inline void name(const DoubleRegister rt, const DoubleRegister rb,      \
+                   const Operand& imm) {                                  \
+    vx_form(instr_name, rt, rb, imm);                                     \
+  }
+
+  inline void vx_form(Instr instr, DoubleRegister rt, DoubleRegister rb,
+                      const Operand& imm) {
+    emit(instr | rt.code() * B21 | imm.immediate() * B16 | rb.code() * B11);
+  }
+
+  PPC_VX_OPCODE_A_FORM_LIST(DECLARE_PPC_VX_INSTRUCTIONS_A_FORM)
+#undef DECLARE_PPC_VX_INSTRUCTIONS_A_FORM
 
   RegList* GetScratchRegisterList() { return &scratch_register_list_; }
   // ---------------------------------------------------------------------------
@@ -924,6 +934,9 @@ class Assembler : public AssemblerBase {
              const DoubleRegister frc, const DoubleRegister frb,
              RCBit rc = LeaveRC);
 
+  // Vector instructions
+  void mtvsrd(const DoubleRegister rt, const Register ra);
+
   // Pseudo instructions
 
   // Different nop operations are used by the code generator to detect certain
@@ -945,9 +958,9 @@ class Assembler : public AssemblerBase {
 
   void push(Register src) {
 #if V8_TARGET_ARCH_PPC64
-    stdu(src, MemOperand(sp, -kPointerSize));
+    stdu(src, MemOperand(sp, -kSystemPointerSize));
 #else
-    stwu(src, MemOperand(sp, -kPointerSize));
+    stwu(src, MemOperand(sp, -kSystemPointerSize));
 #endif
   }
 
@@ -957,10 +970,10 @@ class Assembler : public AssemblerBase {
 #else
     lwz(dst, MemOperand(sp));
 #endif
-    addi(sp, sp, Operand(kPointerSize));
+    addi(sp, sp, Operand(kSystemPointerSize));
   }
 
-  void pop() { addi(sp, sp, Operand(kPointerSize)); }
+  void pop() { addi(sp, sp, Operand(kSystemPointerSize)); }
 
   // Jump unconditionally to given label.
   void jmp(Label* L) { b(L); }

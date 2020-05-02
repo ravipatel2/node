@@ -14,42 +14,22 @@
 #include "src/objects/map.h"
 #include "src/objects/slots-inl.h"
 #include "src/objects/smi.h"
-#include "src/snapshot/snapshot.h"
 
 namespace v8 {
 namespace internal {
 
-Serializer::Serializer(Isolate* isolate)
+Serializer::Serializer(Isolate* isolate, Snapshot::SerializerFlags flags)
     : isolate_(isolate),
       external_reference_encoder_(isolate),
       root_index_map_(isolate),
+      flags_(flags),
       allocator_(this) {
 #ifdef OBJECT_PRINT
   if (FLAG_serialization_statistics) {
     for (int space = 0; space < kNumberOfSpaces; ++space) {
-      instance_type_count_[space] = NewArray<int>(kInstanceTypes);
-      instance_type_size_[space] = NewArray<size_t>(kInstanceTypes);
-      for (int i = 0; i < kInstanceTypes; i++) {
-        instance_type_count_[space][i] = 0;
-        instance_type_size_[space][i] = 0;
-      }
-    }
-  } else {
-    for (int space = 0; space < kNumberOfSpaces; ++space) {
-      instance_type_count_[space] = nullptr;
-      instance_type_size_[space] = nullptr;
-    }
-  }
-#endif  // OBJECT_PRINT
-}
-
-Serializer::~Serializer() {
-  if (code_address_map_ != nullptr) delete code_address_map_;
-#ifdef OBJECT_PRINT
-  for (int space = 0; space < kNumberOfSpaces; ++space) {
-    if (instance_type_count_[space] != nullptr) {
-      DeleteArray(instance_type_count_[space]);
-      DeleteArray(instance_type_size_[space]);
+      // Value-initialized to 0.
+      instance_type_count_[space] = std::make_unique<int[]>(kInstanceTypes);
+      instance_type_size_[space] = std::make_unique<size_t[]>(kInstanceTypes);
     }
   }
 #endif  // OBJECT_PRINT
@@ -102,15 +82,16 @@ bool Serializer::MustBeDeferred(HeapObject object) { return false; }
 void Serializer::VisitRootPointers(Root root, const char* description,
                                    FullObjectSlot start, FullObjectSlot end) {
   for (FullObjectSlot current = start; current < end; ++current) {
-    SerializeRootObject(*current);
+    SerializeRootObject(current);
   }
 }
 
-void Serializer::SerializeRootObject(Object object) {
-  if (object.IsSmi()) {
-    PutSmi(Smi::cast(object));
+void Serializer::SerializeRootObject(FullObjectSlot slot) {
+  Object o = *slot;
+  if (o.IsSmi()) {
+    PutSmiRoot(slot);
   } else {
-    SerializeObject(HeapObject::cast(object));
+    SerializeObject(HeapObject::cast(o));
   }
 }
 
@@ -209,12 +190,21 @@ void Serializer::PutRoot(RootIndex root, HeapObject object) {
   }
 }
 
-void Serializer::PutSmi(Smi smi) {
-  sink_.Put(kOnePointerRawData, "Smi");
-  Tagged_t raw_value = static_cast<Tagged_t>(smi.ptr());
-  byte bytes[kTaggedSize];
-  memcpy(bytes, &raw_value, kTaggedSize);
-  for (int i = 0; i < kTaggedSize; i++) sink_.Put(bytes[i], "Byte");
+void Serializer::PutSmiRoot(FullObjectSlot slot) {
+  // Serializing a smi root in compressed pointer builds will serialize the
+  // full object slot (of kSystemPointerSize) to avoid complications during
+  // deserialization (endianness or smi sequences).
+  STATIC_ASSERT(decltype(slot)::kSlotDataSize == sizeof(Address));
+  STATIC_ASSERT(decltype(slot)::kSlotDataSize == kSystemPointerSize);
+  static constexpr int bytes_to_output = decltype(slot)::kSlotDataSize;
+  static constexpr int size_in_tagged = bytes_to_output >> kTaggedSizeLog2;
+  sink_.PutSection(kFixedRawDataStart + size_in_tagged, "Smi");
+
+  Address raw_value = Smi::cast(*slot).ptr();
+  const byte* raw_value_as_bytes = reinterpret_cast<const byte*>(&raw_value);
+  for (size_t i = 0; i < bytes_to_output; i++) {
+    sink_.Put(raw_value_as_bytes[i], "Byte");
+  }
 }
 
 void Serializer::PutBackReference(HeapObject object,
@@ -283,7 +273,7 @@ void Serializer::Pad(int padding_offset) {
 
 void Serializer::InitializeCodeAddressMap() {
   isolate_->InitializeLoggingAndCounters();
-  code_address_map_ = new CodeAddressMap(isolate_);
+  code_address_map_ = std::make_unique<CodeAddressMap>(isolate_);
 }
 
 Code Serializer::CopyCode(Code code) {
@@ -363,7 +353,8 @@ uint32_t Serializer::ObjectSerializer::SerializeBackingStore(
 void Serializer::ObjectSerializer::SerializeJSTypedArray() {
   JSTypedArray typed_array = JSTypedArray::cast(object_);
   if (typed_array.is_on_heap()) {
-    typed_array.RemoveExternalPointerCompensationForSerialization();
+    typed_array.RemoveExternalPointerCompensationForSerialization(
+        serializer_->isolate());
   } else {
     if (!typed_array.WasDetached()) {
       // Explicitly serialize the backing store now.
@@ -379,13 +370,9 @@ void Serializer::ObjectSerializer::SerializeJSTypedArray() {
           reinterpret_cast<Address>(typed_array.DataPtr()) - byte_offset);
 
       uint32_t ref = SerializeBackingStore(backing_store, byte_length);
-      // To properly share the buffer, we set the backing store ref as an
-      // off-heap offset from nullptr. On deserialization we re-set data
-      // pointer to proper value.
-      typed_array.SetOffHeapDataPtr(nullptr, ref);
-      DCHECK_EQ(ref, reinterpret_cast<Address>(typed_array.DataPtr()));
+      typed_array.SetExternalBackingStoreRefForSerialization(ref);
     } else {
-      typed_array.SetOffHeapDataPtr(nullptr, 0);
+      typed_array.SetExternalBackingStoreRefForSerialization(0);
     }
   }
   SerializeObject();
@@ -397,6 +384,7 @@ void Serializer::ObjectSerializer::SerializeJSArrayBuffer() {
   // We cannot store byte_length larger than Smi range in the snapshot.
   CHECK_LE(buffer.byte_length(), Smi::kMaxValue);
   int32_t byte_length = static_cast<int32_t>(buffer.byte_length());
+  ArrayBufferExtension* extension = buffer.extension();
 
   // The embedder-allocated backing store only exists for the off-heap case.
   if (backing_store != nullptr) {
@@ -405,9 +393,16 @@ void Serializer::ObjectSerializer::SerializeJSArrayBuffer() {
     // a backing store address. On deserialization we re-set data pointer
     // to proper value.
     buffer.set_backing_store(reinterpret_cast<void*>(static_cast<size_t>(ref)));
+
+    // Ensure deterministic output by setting extension to null during
+    // serialization.
+    buffer.set_extension(nullptr);
   }
+
   SerializeObject();
+
   buffer.set_backing_store(backing_store);
+  buffer.set_extension(extension);
 }
 
 void Serializer::ObjectSerializer::SerializeExternalString() {
@@ -720,32 +715,64 @@ void Serializer::ObjectSerializer::VisitEmbeddedPointer(Code host,
   bytes_processed_so_far_ += rinfo->target_address_size();
 }
 
+void Serializer::ObjectSerializer::OutputExternalReference(Address target,
+                                                           int target_size,
+                                                           bool sandboxify) {
+  DCHECK_LE(target_size, sizeof(target));  // Must fit in Address.
+  ExternalReferenceEncoder::Value encoded_reference;
+  bool encoded_successfully;
+
+  if (serializer_->allow_unknown_external_references_for_testing()) {
+    encoded_successfully =
+        serializer_->TryEncodeExternalReference(target).To(&encoded_reference);
+  } else {
+    encoded_reference = serializer_->EncodeExternalReference(target);
+    encoded_successfully = true;
+  }
+
+  if (!encoded_successfully) {
+    // In this case the serialized snapshot will not be used in a different
+    // Isolate and thus the target address will not change between
+    // serialization and deserialization. We can serialize seen external
+    // references verbatim.
+    CHECK(serializer_->allow_unknown_external_references_for_testing());
+    CHECK(IsAligned(target_size, kObjectAlignment));
+    CHECK_LE(target_size, kNumberOfFixedRawData * kTaggedSize);
+    int size_in_tagged = target_size >> kTaggedSizeLog2;
+    sink_->PutSection(kFixedRawDataStart + size_in_tagged, "FixedRawData");
+    sink_->PutRaw(reinterpret_cast<byte*>(&target), target_size, "Bytes");
+  } else if (encoded_reference.is_from_api()) {
+    if (V8_HEAP_SANDBOX_BOOL && sandboxify) {
+      sink_->Put(kSandboxedApiReference, "SandboxedApiRef");
+    } else {
+      sink_->Put(kApiReference, "ApiRef");
+    }
+    sink_->PutInt(encoded_reference.index(), "reference index");
+  } else {
+    if (V8_HEAP_SANDBOX_BOOL && sandboxify) {
+      sink_->Put(kSandboxedExternalReference, "SandboxedExternalRef");
+    } else {
+      sink_->Put(kExternalReference, "ExternalRef");
+    }
+    sink_->PutInt(encoded_reference.index(), "reference index");
+  }
+  bytes_processed_so_far_ += target_size;
+}
+
 void Serializer::ObjectSerializer::VisitExternalReference(Foreign host,
                                                           Address* p) {
-  auto encoded_reference =
-      serializer_->EncodeExternalReference(host.foreign_address());
-  if (encoded_reference.is_from_api()) {
-    sink_->Put(kApiReference, "ApiRef");
-  } else {
-    sink_->Put(kExternalReference, "ExternalRef");
-  }
-  sink_->PutInt(encoded_reference.index(), "reference index");
-  bytes_processed_so_far_ += kSystemPointerSize;
+  // "Sandboxify" external reference.
+  OutputExternalReference(host.foreign_address(), kExternalPointerSize, true);
 }
 
 void Serializer::ObjectSerializer::VisitExternalReference(Code host,
                                                           RelocInfo* rinfo) {
   Address target = rinfo->target_external_reference();
-  auto encoded_reference = serializer_->EncodeExternalReference(target);
-  if (encoded_reference.is_from_api()) {
-    DCHECK(!rinfo->IsCodedSpecially());
-    sink_->Put(kApiReference, "ApiRef");
-  } else {
-    sink_->Put(kExternalReference, "ExternalRef");
-  }
   DCHECK_NE(target, kNullAddress);  // Code does not reference null.
-  sink_->PutInt(encoded_reference.index(), "reference index");
-  bytes_processed_so_far_ += rinfo->target_address_size();
+  DCHECK_IMPLIES(serializer_->EncodeExternalReference(target).is_from_api(),
+                 !rinfo->IsCodedSpecially());
+  // Don't "sandboxify" external references embedded in the code.
+  OutputExternalReference(target, rinfo->target_address_size(), false);
 }
 
 void Serializer::ObjectSerializer::VisitInternalReference(Code host,
@@ -826,8 +853,8 @@ void Serializer::ObjectSerializer::OutputRawData(Address up_to) {
     DCHECK(to_skip == bytes_to_output);
     if (IsAligned(bytes_to_output, kObjectAlignment) &&
         bytes_to_output <= kNumberOfFixedRawData * kTaggedSize) {
-      int size_in_words = bytes_to_output >> kTaggedSizeLog2;
-      sink_->PutSection(kFixedRawDataStart + size_in_words, "FixedRawData");
+      int size_in_tagged = bytes_to_output >> kTaggedSizeLog2;
+      sink_->PutSection(kFixedRawDataStart + size_in_tagged, "FixedRawData");
     } else {
       sink_->Put(kVariableRawData, "VariableRawData");
       sink_->PutInt(bytes_to_output, "length");

@@ -714,6 +714,9 @@ class RuntimeCallTimer final {
   // Make the time source configurable for testing purposes.
   V8_EXPORT_PRIVATE static base::TimeTicks (*Now)();
 
+  // Helper to switch over to CPU time.
+  static base::TimeTicks NowCPUTime();
+
  private:
   inline void Pause(base::TimeTicks now);
   inline void Resume(base::TimeTicks now);
@@ -735,6 +738,7 @@ class RuntimeCallTimer final {
   V(ArrayBuffer_Detach)                                    \
   V(ArrayBuffer_New)                                       \
   V(ArrayBuffer_NewBackingStore)                           \
+  V(ArrayBuffer_BackingStore_Reallocate)                   \
   V(Array_CloneElementAt)                                  \
   V(Array_New)                                             \
   V(BigInt64Array_New)                                     \
@@ -768,7 +772,6 @@ class RuntimeCallTimer final {
   V(Int8Array_New)                                         \
   V(Isolate_DateTimeConfigurationChangeNotification)       \
   V(Isolate_LocaleConfigurationChangeNotification)         \
-  V(FinalizationGroup_Cleanup)                             \
   V(JSON_Parse)                                            \
   V(JSON_Stringify)                                        \
   V(Map_AsArray)                                           \
@@ -861,6 +864,7 @@ class RuntimeCallTimer final {
   V(String_NewFromOneByte)                                 \
   V(String_NewFromTwoByte)                                 \
   V(String_NewFromUtf8)                                    \
+  V(String_NewFromUtf8Literal)                             \
   V(StringObject_New)                                      \
   V(StringObject_StringValue)                              \
   V(String_Write)                                          \
@@ -890,6 +894,9 @@ class RuntimeCallTimer final {
   V(Value_NumberValue)                                     \
   V(Value_TypeOf)                                          \
   V(Value_Uint32Value)                                     \
+  V(WasmCompileError_New)                                  \
+  V(WasmLinkError_New)                                     \
+  V(WasmRuntimeError_New)                                  \
   V(WeakMap_Get)                                           \
   V(WeakMap_New)                                           \
   V(WeakMap_Set)
@@ -903,6 +910,7 @@ class RuntimeCallTimer final {
   ADD_THREAD_SPECIFIC_COUNTER(V, Compile, Eval)                         \
   ADD_THREAD_SPECIFIC_COUNTER(V, Compile, Function)                     \
   ADD_THREAD_SPECIFIC_COUNTER(V, Compile, Ignition)                     \
+  ADD_THREAD_SPECIFIC_COUNTER(V, Compile, IgnitionFinalization)         \
   ADD_THREAD_SPECIFIC_COUNTER(V, Compile, RewriteReturnResult)          \
   ADD_THREAD_SPECIFIC_COUNTER(V, Compile, ScopeAnalysis)                \
   ADD_THREAD_SPECIFIC_COUNTER(V, Compile, Script)                       \
@@ -982,12 +990,13 @@ class RuntimeCallTimer final {
   V(CompileFinalizeBackgroundCompileTask)      \
   V(CompileFinishNowOnDispatcher)              \
   V(CompileGetFromOptimizedCodeMap)            \
-  V(CompileIgnitionFinalization)               \
+  V(CompilePublishBackgroundFinalization)      \
   V(CompileSerialize)                          \
   V(CompileWaitForDispatcher)                  \
   V(DeoptimizeCode)                            \
   V(DeserializeContext)                        \
   V(DeserializeIsolate)                        \
+  V(FinalizationRegistryCleanupFromTask)       \
   V(FunctionCallback)                          \
   V(FunctionLengthGetter)                      \
   V(FunctionPrototypeGetter)                   \

@@ -223,8 +223,6 @@ namespace internal {
   T(ProxyGetPrototypeOfNonExtensible,                                          \
     "'getPrototypeOf' on proxy: proxy target is non-extensible but the "       \
     "trap did not return its actual prototype")                                \
-  T(ProxyHandlerOrTargetRevoked,                                               \
-    "Cannot create proxy with a revoked proxy as target or handler")           \
   T(ProxyHasNonConfigurable,                                                   \
     "'has' on proxy: trap returned falsish for property '%' which exists in "  \
     "the proxy target as non-configurable")                                    \
@@ -415,6 +413,7 @@ namespace internal {
     "Invalid left-hand side expression in prefix operation")                   \
   T(InvalidRegExpFlags, "Invalid flags supplied to RegExp constructor '%'")    \
   T(InvalidOrUnexpectedToken, "Invalid or unexpected token")                   \
+  T(InvalidPrivateBrand, "Object must be an instance of class %")              \
   T(InvalidPrivateFieldResolution,                                             \
     "Private field '%' must be declared in an enclosing class")                \
   T(InvalidPrivateMemberRead,                                                  \
@@ -426,6 +425,8 @@ namespace internal {
   T(InvalidPrivateMethodWrite, "Private method '%' is not writable")           \
   T(InvalidPrivateGetterAccess, "'%' was defined without a getter")            \
   T(InvalidPrivateSetterAccess, "'%' was defined without a setter")            \
+  T(InvalidUnusedPrivateStaticMethodAccessedByDebugger,                        \
+    "Unused static private method '%' cannot be accessed at debug time")       \
   T(JsonParseUnexpectedEOS, "Unexpected end of JSON input")                    \
   T(JsonParseUnexpectedToken, "Unexpected token % in JSON at position %")      \
   T(JsonParseUnexpectedTokenNumber, "Unexpected number in JSON at position %") \
@@ -497,7 +498,8 @@ namespace internal {
   T(TooManySpreads,                                                            \
     "Literal containing too many nested spreads (up to 65534 allowed)")        \
   T(TooManyVariables, "Too many variables declared (only 4194303 allowed)")    \
-  T(TooManyElementsInPromiseAll, "Too many elements passed to Promise.all")    \
+  T(TooManyElementsInPromiseCombinator,                                        \
+    "Too many elements passed to Promise.%")                                   \
   T(TypedArrayTooShort,                                                        \
     "Derived TypedArray constructor created an array which was too small")     \
   T(UnexpectedEOS, "Unexpected end of input")                                  \
@@ -549,6 +551,8 @@ namespace internal {
   T(WasmTrapDataSegmentDropped, "data segment has been dropped")               \
   T(WasmTrapElemSegmentDropped, "element segment has been dropped")            \
   T(WasmTrapTableOutOfBounds, "table access out of bounds")                    \
+  T(WasmTrapBrOnExnNullRef, "br_on_exn on nullref value")                      \
+  T(WasmTrapRethrowNullRef, "rethrowing nullref value")                        \
   T(WasmExceptionError, "wasm exception")                                      \
   /* Asm.js validation related */                                              \
   T(AsmJsInvalid, "Invalid asm.js: %")                                         \
@@ -578,17 +582,19 @@ namespace internal {
   T(WeakRefsUnregisterTokenMustBeObject,                                       \
     "unregisterToken ('%') must be an object")                                 \
   T(WeakRefsCleanupMustBeCallable,                                             \
-    "FinalizationGroup: cleanup must be callable")                             \
+    "FinalizationRegistry: cleanup must be callable")                          \
   T(WeakRefsRegisterTargetMustBeObject,                                        \
-    "FinalizationGroup.prototype.register: target must be an object")          \
+    "FinalizationRegistry.prototype.register: target must be an object")       \
   T(WeakRefsRegisterTargetAndHoldingsMustNotBeSame,                            \
-    "FinalizationGroup.prototype.register: target and holdings must not be "   \
-    "same")                                                                    \
+    "FinalizationRegistry.prototype.register: target and holdings must not "   \
+    "be same")                                                                 \
   T(WeakRefsWeakRefConstructorTargetMustBeObject,                              \
     "WeakRef: target must be an object")                                       \
   T(OptionalChainingNoNew, "Invalid optional chain from new expression")       \
   T(OptionalChainingNoSuper, "Invalid optional chain from super property")     \
-  T(OptionalChainingNoTemplate, "Invalid tagged template on optional chain")
+  T(OptionalChainingNoTemplate, "Invalid tagged template on optional chain")   \
+  /* AggregateError */                                                         \
+  T(AllPromisesRejected, "All promises were rejected")
 
 enum class MessageTemplate {
 #define TEMPLATE(NAME, STRING) k##NAME,

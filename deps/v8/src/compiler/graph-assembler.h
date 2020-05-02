@@ -82,15 +82,19 @@ class BasicBlock;
   V(Word32Equal)                          \
   V(Word32Or)                             \
   V(Word32Sar)                            \
+  V(Word32SarShiftOutZeros)               \
   V(Word32Shl)                            \
   V(Word32Shr)                            \
   V(Word32Xor)                            \
   V(Word64And)                            \
   V(Word64Equal)                          \
+  V(Word64Or)                             \
   V(WordAnd)                              \
   V(WordEqual)                            \
   V(WordSar)                              \
-  V(WordShl)
+  V(WordSarShiftOutZeros)                 \
+  V(WordShl)                              \
+  V(WordXor)
 
 #define CHECKED_ASSEMBLER_MACH_BINOP_LIST(V) \
   V(Int32AddWithOverflow)                    \
@@ -302,6 +306,7 @@ class V8_EXPORT_PRIVATE GraphAssembler {
   Node* Float64RoundTruncate(Node* value);
 
   Node* BitcastWordToTagged(Node* value);
+  Node* BitcastWordToTaggedSigned(Node* value);
   Node* BitcastTaggedToWord(Node* value);
   Node* BitcastTaggedToWordForTagAndSmiBits(Node* value);
 
@@ -309,7 +314,9 @@ class V8_EXPORT_PRIVATE GraphAssembler {
   Node* Checkpoint(FrameState frame_state);
 
   Node* Store(StoreRepresentation rep, Node* object, Node* offset, Node* value);
+  Node* Store(StoreRepresentation rep, Node* object, int offset, Node* value);
   Node* Load(MachineType type, Node* object, Node* offset);
+  Node* Load(MachineType type, Node* object, int offset);
 
   Node* StoreUnaligned(MachineRepresentation rep, Node* object, Node* offset,
                        Node* value);

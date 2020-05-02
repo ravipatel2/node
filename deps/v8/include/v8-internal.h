@@ -10,8 +10,8 @@
 #include <string.h>
 #include <type_traits>
 
-#include "v8-version.h"  // NOLINT(build/include)
-#include "v8config.h"    // NOLINT(build/include)
+#include "v8-version.h"  // NOLINT(build/include_directory)
+#include "v8config.h"    // NOLINT(build/include_directory)
 
 namespace v8 {
 
@@ -106,6 +106,10 @@ const int kApiTaggedSize = kApiInt32Size;
 const int kApiTaggedSize = kApiSystemPointerSize;
 #endif
 
+constexpr bool PointerCompressionIsEnabled() {
+  return kApiTaggedSize != kApiSystemPointerSize;
+}
+
 #ifdef V8_31BIT_SMIS_ON_64BIT_ARCH
 using PlatformSmiTagging = SmiTagging<kApiInt32Size>;
 #else
@@ -141,7 +145,6 @@ class Internals {
       1 * kApiTaggedSize + 2 * kApiInt32Size;
 
   static const int kOddballKindOffset = 4 * kApiTaggedSize + kApiDoubleSize;
-  static const int kForeignAddressOffset = kApiTaggedSize;
   static const int kJSObjectHeaderSize = 3 * kApiTaggedSize;
   static const int kFixedArrayHeaderSize = 2 * kApiTaggedSize;
   static const int kEmbedderDataArrayHeaderSize = 2 * kApiTaggedSize;
@@ -160,10 +163,10 @@ class Internals {
       kNumIsolateDataSlots * kApiSystemPointerSize;
   static const int kExternalMemoryLimitOffset =
       kExternalMemoryOffset + kApiInt64Size;
-  static const int kExternalMemoryAtLastMarkCompactOffset =
+  static const int kExternalMemoryLowSinceMarkCompactOffset =
       kExternalMemoryLimitOffset + kApiInt64Size;
   static const int kIsolateFastCCallCallerFpOffset =
-      kExternalMemoryAtLastMarkCompactOffset + kApiInt64Size;
+      kExternalMemoryLowSinceMarkCompactOffset + kApiInt64Size;
   static const int kIsolateFastCCallCallerPcOffset =
       kIsolateFastCCallCallerFpOffset + kApiSystemPointerSize;
   static const int kIsolateStackGuardOffset =

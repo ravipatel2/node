@@ -93,7 +93,7 @@ namespace torque {
   AST_STATEMENT_NODE_KIND_LIST(V)       \
   AST_DECLARATION_NODE_KIND_LIST(V)     \
   V(Identifier)                         \
-  V(LabelBlock)                         \
+  V(TryHandler)                         \
   V(ClassBody)
 
 struct AstNode {
@@ -629,6 +629,8 @@ struct BasicTypeExpression : TypeExpression {
         is_constexpr(IsConstexprName(name)),
         name(std::move(name)),
         generic_arguments(std::move(generic_arguments)) {}
+  BasicTypeExpression(SourcePosition pos, std::string name)
+      : BasicTypeExpression(pos, {}, std::move(name), {}) {}
   std::vector<std::string> namespace_qualification;
   bool is_constexpr;
   std::string name;
@@ -778,14 +780,17 @@ struct ForLoopStatement : Statement {
   Statement* body;
 };
 
-struct LabelBlock : AstNode {
-  DEFINE_AST_NODE_LEAF_BOILERPLATE(LabelBlock)
-  LabelBlock(SourcePosition pos, Identifier* label,
+struct TryHandler : AstNode {
+  DEFINE_AST_NODE_LEAF_BOILERPLATE(TryHandler)
+  enum class HandlerKind { kCatch, kLabel };
+  TryHandler(SourcePosition pos, HandlerKind handler_kind, Identifier* label,
              const ParameterList& parameters, Statement* body)
       : AstNode(kKind, pos),
+        handler_kind(handler_kind),
         label(label),
         parameters(parameters),
         body(std::move(body)) {}
+  HandlerKind handler_kind;
   Identifier* label;
   ParameterList parameters;
   Statement* body;
@@ -800,15 +805,13 @@ struct StatementExpression : Expression {
 
 struct TryLabelExpression : Expression {
   DEFINE_AST_NODE_LEAF_BOILERPLATE(TryLabelExpression)
-  TryLabelExpression(SourcePosition pos, bool catch_exceptions,
-                     Expression* try_expression, LabelBlock* label_block)
+  TryLabelExpression(SourcePosition pos, Expression* try_expression,
+                     TryHandler* label_block)
       : Expression(kKind, pos),
-        catch_exceptions(catch_exceptions),
         try_expression(try_expression),
         label_block(label_block) {}
-  bool catch_exceptions;
   Expression* try_expression;
-  LabelBlock* label_block;
+  TryHandler* label_block;
 };
 
 struct BlockStatement : Statement {
@@ -838,7 +841,7 @@ struct InstanceTypeConstraints {
 struct AbstractTypeDeclaration : TypeDeclaration {
   DEFINE_AST_NODE_LEAF_BOILERPLATE(AbstractTypeDeclaration)
   AbstractTypeDeclaration(SourcePosition pos, Identifier* name, bool transient,
-                          base::Optional<Identifier*> extends,
+                          base::Optional<TypeExpression*> extends,
                           base::Optional<std::string> generates)
       : TypeDeclaration(kKind, pos, name),
         is_constexpr(IsConstexprName(name->value)),
@@ -847,7 +850,7 @@ struct AbstractTypeDeclaration : TypeDeclaration {
         generates(std::move(generates)) {}
   bool is_constexpr;
   bool transient;
-  base::Optional<Identifier*> extends;
+  base::Optional<TypeExpression*> extends;
   base::Optional<std::string> generates;
 };
 
@@ -1173,8 +1176,7 @@ struct ClassBody : AstNode {
 struct ClassDeclaration : TypeDeclaration {
   DEFINE_AST_NODE_LEAF_BOILERPLATE(ClassDeclaration)
   ClassDeclaration(SourcePosition pos, Identifier* name, ClassFlags flags,
-                   base::Optional<TypeExpression*> super,
-                   base::Optional<std::string> generates,
+                   TypeExpression* super, base::Optional<std::string> generates,
                    std::vector<Declaration*> methods,
                    std::vector<ClassFieldExpression> fields,
                    InstanceTypeConstraints instance_type_constraints)
@@ -1186,7 +1188,7 @@ struct ClassDeclaration : TypeDeclaration {
         fields(std::move(fields)),
         instance_type_constraints(std::move(instance_type_constraints)) {}
   ClassFlags flags;
-  base::Optional<TypeExpression*> super;
+  TypeExpression* super;
   base::Optional<std::string> generates;
   std::vector<Declaration*> methods;
   std::vector<ClassFieldExpression> fields;

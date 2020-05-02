@@ -113,6 +113,9 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kPPC_CompressSigned:
     case kPPC_CompressPointer:
     case kPPC_CompressAny:
+    case kPPC_I32x4Splat:
+    case kPPC_I16x8Splat:
+    case kPPC_I8x16Splat:
       return kNoOpcodeFlags;
 
     case kPPC_LoadWordS8:
@@ -124,6 +127,7 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kPPC_LoadWord64:
     case kPPC_LoadFloat32:
     case kPPC_LoadDouble:
+    case kPPC_LoadSimd128:
     case kPPC_AtomicLoadUint8:
     case kPPC_AtomicLoadUint16:
     case kPPC_AtomicLoadWord32:
@@ -137,6 +141,7 @@ int InstructionScheduler::GetTargetInstructionFlags(
     case kPPC_StoreWord64:
     case kPPC_StoreFloat32:
     case kPPC_StoreDouble:
+    case kPPC_StoreSimd128:
     case kPPC_Push:
     case kPPC_PushFrame:
     case kPPC_StoreToStackSlot:

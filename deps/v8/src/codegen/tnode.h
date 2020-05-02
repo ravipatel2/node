@@ -13,6 +13,8 @@ namespace internal {
 class HeapNumber;
 class BigInt;
 class Object;
+class Smi;
+class TaggedIndex;
 
 namespace compiler {
 
@@ -77,6 +79,12 @@ struct UintPtrT : WordT {
   static constexpr MachineType kMachineType = MachineType::UintPtr();
 };
 
+struct ExternalPointerT : UntaggedT {
+  static const MachineRepresentation kMachineRepresentation =
+      MachineType::PointerRepresentation();
+  static constexpr MachineType kMachineType = MachineType::Pointer();
+};
+
 struct Float32T : UntaggedT {
   static const MachineRepresentation kMachineRepresentation =
       MachineRepresentation::kFloat32;
@@ -129,6 +137,10 @@ struct MachineTypeOf<MaybeObject> {
 template <>
 struct MachineTypeOf<Smi> {
   static constexpr MachineType value = MachineType::TaggedSigned();
+};
+template <>
+struct MachineTypeOf<TaggedIndex> {
+  static constexpr MachineType value = MachineType::Pointer();
 };
 template <class HeapObjectSubtype>
 struct MachineTypeOf<HeapObjectSubtype,
